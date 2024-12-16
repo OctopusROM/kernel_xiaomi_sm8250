@@ -1,3 +1,8 @@
 [submodule "drivers/misc/Kprofiles"]
 	path = drivers/misc/Kprofiles
 	url = https://github.com/dakkshesh07/Kprofiles
+
+[submodule "KernelSU"]
+	path = KernelSU
+	url = https://github.com/lightsummer233/KernelSU.git
+	branch = non-gki
