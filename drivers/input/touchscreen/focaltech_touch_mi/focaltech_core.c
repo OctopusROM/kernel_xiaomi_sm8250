@@ -2120,34 +2120,39 @@ static int fb_notifier_callback(struct notifier_block *self,
 
 	FTS_FUNC_ENTER();
 
-	if (evdata && evdata->data && event == MI_DRM_EVENT_BLANK && fts_data &&
-	    fts_data->client) {
+	if (evdata && evdata->data && fts_data && fts_data->client) {
 		blank = evdata->data;
 
-		flush_workqueue(fts_data->event_wq);
-
-		if (*blank == MI_DRM_BLANK_UNBLANK) {
+		if ((event == MI_DRM_PRE_EVENT_BLANK ||
+		     event == MI_DRM_EARLY_EVENT_BLANK) &&
+		    (*blank == MI_DRM_BLANK_POWERDOWN ||
+		     *blank == MI_DRM_BLANK_LP1 ||
+		     *blank == MI_DRM_BLANK_LP2)) {
+			cancel_work_sync(&fts_data->resume_work);
+			flush_workqueue(fts_data->event_wq);
+			if (!fts_data->suspended) {
+				FTS_INFO("FTS do suspend on early %s event\n",
+					 *blank == MI_DRM_BLANK_POWERDOWN ?
+						 "POWER DOWN" :
+						 "LP");
+				if (*blank == MI_DRM_BLANK_POWERDOWN &&
+				    fts_data->finger_in_fod) {
+					FTS_INFO(
+						"fb_notifier_callback:fod_status = %d\n",
+						fts_data->fod_status);
+					if (fts_data->fod_status != -1 &&
+					    fts_data->fod_status != 100) {
+						FTS_INFO("set fod finger skip true\n");
+						fts_data->fod_finger_skip = true;
+					}
+				}
+				fts_ts_suspend(&fts_data->client->dev);
+			}
+		} else if (event == MI_DRM_EVENT_BLANK &&
+			   *blank == MI_DRM_BLANK_UNBLANK) {
+			flush_workqueue(fts_data->event_wq);
 			FTS_INFO("FTS do resume work\n");
 			queue_work(fts_data->event_wq, &fts_data->resume_work);
-		} else if (*blank == MI_DRM_BLANK_POWERDOWN ||
-			   *blank == MI_DRM_BLANK_LP1 ||
-			   *blank == MI_DRM_BLANK_LP2) {
-			FTS_INFO("FTS do suspend work by event %s\n",
-				 *blank == MI_DRM_BLANK_POWERDOWN ?
-					 "POWER DOWN" :
-					 "LP");
-			if (*blank == MI_DRM_BLANK_POWERDOWN &&
-			    fts_data->finger_in_fod) {
-				FTS_INFO(
-					"fb_notifier_callback:fod_status = %d\n",
-					fts_data->fod_status);
-				if (fts_data->fod_status != -1 &&
-				    fts_data->fod_status != 100) {
-					FTS_INFO("set fod finger skip true\n");
-					fts_data->fod_finger_skip = true;
-				}
-			}
-			queue_work(fts_data->event_wq, &fts_data->suspend_work);
 		}
 	}
 
