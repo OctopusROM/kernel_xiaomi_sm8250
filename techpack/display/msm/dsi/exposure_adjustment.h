@@ -9,10 +9,11 @@
 #define EA_PCC_MAX 32768
 
 struct dsi_panel;
+struct drm_crtc;
 
 bool ea_panel_is_enabled(struct dsi_panel *panel);
 int ea_panel_mode_ctrl(struct dsi_panel *panel, bool enable);
 u32 ea_panel_calc_backlight(struct dsi_panel *panel, u32 level);
-u32 ea_panel_get_coefficient(void);
+u32 ea_panel_get_coefficient(struct drm_crtc *crtc);
 
 #endif
