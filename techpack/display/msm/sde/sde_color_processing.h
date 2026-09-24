@@ -93,6 +93,8 @@ void sde_cp_crtc_destroy_properties(struct drm_crtc *crtc);
  */
 int sde_cp_crtc_set_property(struct drm_crtc *crtc,
 				struct drm_property *property, uint64_t val);
+bool sde_cp_crtc_has_pcc(struct drm_crtc *crtc);
+void sde_cp_crtc_update_ea(struct drm_crtc *crtc);
 /**
  * sde_cp_crtc_check_properties: Verify color processing properties for a crtc.
  *                               Should be called during atomic check call.
