@@ -322,9 +322,27 @@ static int set_dspp_pcc_feature(struct sde_hw_dspp *hw_dspp,
 			if (coeff < EA_PCC_MAX) {
 				if (hw_cfg->payload != &adjusted)
 					adjusted = *(struct drm_msm_pcc *)hw_cfg->payload;
+				adjusted.r.c = div_u64((u64)adjusted.r.c * coeff,
+							 EA_PCC_MAX);
 				adjusted.r.r = div_u64((u64)adjusted.r.r * coeff,
 							 EA_PCC_MAX);
+				adjusted.r.g = div_u64((u64)adjusted.r.g * coeff,
+							 EA_PCC_MAX);
+				adjusted.r.b = div_u64((u64)adjusted.r.b * coeff,
+							 EA_PCC_MAX);
+				adjusted.g.c = div_u64((u64)adjusted.g.c * coeff,
+							 EA_PCC_MAX);
+				adjusted.g.r = div_u64((u64)adjusted.g.r * coeff,
+							 EA_PCC_MAX);
 				adjusted.g.g = div_u64((u64)adjusted.g.g * coeff,
+							 EA_PCC_MAX);
+				adjusted.g.b = div_u64((u64)adjusted.g.b * coeff,
+							 EA_PCC_MAX);
+				adjusted.b.c = div_u64((u64)adjusted.b.c * coeff,
+							 EA_PCC_MAX);
+				adjusted.b.r = div_u64((u64)adjusted.b.r * coeff,
+							 EA_PCC_MAX);
+				adjusted.b.g = div_u64((u64)adjusted.b.g * coeff,
 							 EA_PCC_MAX);
 				adjusted.b.b = div_u64((u64)adjusted.b.b * coeff,
 							 EA_PCC_MAX);
