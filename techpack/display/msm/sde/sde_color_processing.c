@@ -330,6 +330,14 @@ static int set_dspp_pcc_feature(struct sde_hw_dspp *hw_dspp,
 							 EA_PCC_MAX);
 				adjusted.r.b = div_u64((u64)adjusted.r.b * coeff,
 							 EA_PCC_MAX);
+				adjusted.r.rg = div_u64((u64)adjusted.r.rg * coeff,
+							 EA_PCC_MAX);
+				adjusted.r.gb = div_u64((u64)adjusted.r.gb * coeff,
+							 EA_PCC_MAX);
+				adjusted.r.rb = div_u64((u64)adjusted.r.rb * coeff,
+							 EA_PCC_MAX);
+				adjusted.r.rgb = div_u64((u64)adjusted.r.rgb * coeff,
+							 EA_PCC_MAX);
 				adjusted.g.c = div_u64((u64)adjusted.g.c * coeff,
 							 EA_PCC_MAX);
 				adjusted.g.r = div_u64((u64)adjusted.g.r * coeff,
@@ -338,6 +346,14 @@ static int set_dspp_pcc_feature(struct sde_hw_dspp *hw_dspp,
 							 EA_PCC_MAX);
 				adjusted.g.b = div_u64((u64)adjusted.g.b * coeff,
 							 EA_PCC_MAX);
+				adjusted.g.rg = div_u64((u64)adjusted.g.rg * coeff,
+							 EA_PCC_MAX);
+				adjusted.g.gb = div_u64((u64)adjusted.g.gb * coeff,
+							 EA_PCC_MAX);
+				adjusted.g.rb = div_u64((u64)adjusted.g.rb * coeff,
+							 EA_PCC_MAX);
+				adjusted.g.rgb = div_u64((u64)adjusted.g.rgb * coeff,
+							 EA_PCC_MAX);
 				adjusted.b.c = div_u64((u64)adjusted.b.c * coeff,
 							 EA_PCC_MAX);
 				adjusted.b.r = div_u64((u64)adjusted.b.r * coeff,
@@ -345,6 +361,32 @@ static int set_dspp_pcc_feature(struct sde_hw_dspp *hw_dspp,
 				adjusted.b.g = div_u64((u64)adjusted.b.g * coeff,
 							 EA_PCC_MAX);
 				adjusted.b.b = div_u64((u64)adjusted.b.b * coeff,
+							 EA_PCC_MAX);
+				adjusted.b.rg = div_u64((u64)adjusted.b.rg * coeff,
+							 EA_PCC_MAX);
+				adjusted.b.gb = div_u64((u64)adjusted.b.gb * coeff,
+							 EA_PCC_MAX);
+				adjusted.b.rb = div_u64((u64)adjusted.b.rb * coeff,
+							 EA_PCC_MAX);
+				adjusted.b.rgb = div_u64((u64)adjusted.b.rgb * coeff,
+							 EA_PCC_MAX);
+				adjusted.r_rr = div_u64((u64)adjusted.r_rr * coeff,
+							 EA_PCC_MAX);
+				adjusted.r_gg = div_u64((u64)adjusted.r_gg * coeff,
+							 EA_PCC_MAX);
+				adjusted.r_bb = div_u64((u64)adjusted.r_bb * coeff,
+							 EA_PCC_MAX);
+				adjusted.g_rr = div_u64((u64)adjusted.g_rr * coeff,
+							 EA_PCC_MAX);
+				adjusted.g_gg = div_u64((u64)adjusted.g_gg * coeff,
+							 EA_PCC_MAX);
+				adjusted.g_bb = div_u64((u64)adjusted.g_bb * coeff,
+							 EA_PCC_MAX);
+				adjusted.b_rr = div_u64((u64)adjusted.b_rr * coeff,
+							 EA_PCC_MAX);
+				adjusted.b_gg = div_u64((u64)adjusted.b_gg * coeff,
+							 EA_PCC_MAX);
+				adjusted.b_bb = div_u64((u64)adjusted.b_bb * coeff,
 							 EA_PCC_MAX);
 				hw_cfg->payload = &adjusted;
 			}
