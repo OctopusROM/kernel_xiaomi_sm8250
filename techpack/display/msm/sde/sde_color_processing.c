@@ -8,6 +8,7 @@
 
 #include <linux/dma-buf.h>
 #include <linux/string.h>
+#include <linux/math64.h>
 #include <drm/msm_drm_pp.h>
 #include "sde_color_processing.h"
 #include "sde_kms.h"
@@ -20,6 +21,9 @@
 #include "dsi_panel.h"
 #include "sde_hw_color_proc_common_v4.h"
 #include "sde_connector.h"
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+#include "exposure_adjustment.h"
+#endif
 
 struct sde_cp_node {
 	u32 property_id;
@@ -281,6 +285,10 @@ static int set_dspp_pcc_feature(struct sde_hw_dspp *hw_dspp,
 {
 	int ret = 0;
 	struct drm_msm_pcc *pcc_cfg;
+	struct drm_msm_pcc adjusted;
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+	u32 coeff;
+#endif
 
 	if (!hw_dspp || !hw_dspp->ops.setup_pcc)
 		ret = -EINVAL;
@@ -300,6 +308,30 @@ static int set_dspp_pcc_feature(struct sde_hw_dspp *hw_dspp,
 			pcc_cfg = hw_cfg->payload_clear;
 		}
 
+		if (!hw_cfg->payload &&
+		    !(hw_crtc->mi_dimlayer_type & MI_DIMLAYER_FOD_HBM_OVERLAY)) {
+			adjusted = color_transform_pcc_cfg;
+			hw_cfg->len = sizeof(adjusted);
+			hw_cfg->payload = &adjusted;
+		}
+
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+		if (!(hw_crtc->mi_dimlayer_type & MI_DIMLAYER_FOD_HBM_OVERLAY) &&
+		    hw_cfg->payload) {
+			coeff = ea_panel_get_coefficient(&hw_crtc->base);
+			if (coeff < EA_PCC_MAX) {
+				if (hw_cfg->payload != &adjusted)
+					adjusted = *(struct drm_msm_pcc *)hw_cfg->payload;
+				adjusted.r.r = div_u64((u64)adjusted.r.r * coeff,
+							 EA_PCC_MAX);
+				adjusted.g.g = div_u64((u64)adjusted.g.g * coeff,
+							 EA_PCC_MAX);
+				adjusted.b.b = div_u64((u64)adjusted.b.b * coeff,
+							 EA_PCC_MAX);
+				hw_cfg->payload = &adjusted;
+			}
+		}
+#endif
 		hw_dspp->ops.setup_pcc(hw_dspp, hw_cfg);
 	}
 	return ret;
@@ -1552,6 +1584,39 @@ static void sde_cp_crtc_setfeature(struct sde_cp_node *prop_node,
 	}
 	/* Programming of feature done remove from dirty list */
 	list_del_init(&prop_node->dirty_list);
+}
+
+bool sde_cp_crtc_has_pcc(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct sde_cp_node *node;
+	bool found = false;
+
+	mutex_lock(&sde_crtc->crtc_cp_lock);
+	list_for_each_entry(node, &sde_crtc->feature_list, feature_list) {
+		if (node->feature == SDE_CP_CRTC_DSPP_PCC) {
+			found = true;
+			break;
+		}
+	}
+	mutex_unlock(&sde_crtc->crtc_cp_lock);
+	return found;
+}
+
+void sde_cp_crtc_update_ea(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct sde_cp_node *node;
+
+	mutex_lock(&sde_crtc->crtc_cp_lock);
+	list_for_each_entry(node, &sde_crtc->feature_list, feature_list) {
+		if (node->feature == SDE_CP_CRTC_DSPP_PCC) {
+			list_del_init(&node->dirty_list);
+			sde_cp_update_list(node, sde_crtc, true);
+			break;
+		}
+	}
+	mutex_unlock(&sde_crtc->crtc_cp_lock);
 }
 
 static int sde_cp_crtc_check_pu_features(struct drm_crtc *crtc)
