@@ -380,6 +380,9 @@ struct sde_crtc {
 
 	int comp_ratio;
 	uint32_t mi_dimlayer_type;
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+	u32 ea_pcc_coeff;
+#endif
 
 	struct drm_property_blob *dspp_blob_info;
 };
