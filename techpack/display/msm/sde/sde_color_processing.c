@@ -1922,10 +1922,29 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 			list_empty(&sde_crtc->ad_dirty) &&
 			list_empty(&sde_crtc->ad_active) &&
 			list_empty(&sde_crtc->active_list)) {
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+		if (sde_crtc->ea_pcc_coeff != ea_panel_get_coefficient(crtc))
+			goto update_ea;
+#endif
 		DRM_DEBUG_DRIVER("all lists are empty\n");
 		goto exit;
 	}
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+update_ea:
+	if (sde_crtc->ea_pcc_coeff != ea_panel_get_coefficient(crtc)) {
+		struct sde_cp_node *pcc;
+
+		list_for_each_entry(pcc, &sde_crtc->feature_list, feature_list) {
+			if (pcc->feature == SDE_CP_CRTC_DSPP_PCC) {
+				list_del_init(&pcc->dirty_list);
+				sde_cp_update_list(pcc, sde_crtc, true);
+				break;
+			}
+		}
+	}
+	sde_crtc->ea_pcc_coeff = ea_panel_get_coefficient(crtc);
+#endif
 	rc = sde_cp_crtc_set_pu_features(crtc, &need_flush);
 	if (rc) {
 		DRM_ERROR("failed set pu features, skip cp updates\n");
