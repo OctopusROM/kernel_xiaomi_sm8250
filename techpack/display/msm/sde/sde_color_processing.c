@@ -1573,7 +1573,7 @@ static void sde_cp_crtc_setfeature(struct sde_cp_node *prop_node,
 		}
 	}
 
-	if (feature_enabled) {
+	if (feature_enabled || prop_node->feature == SDE_CP_CRTC_DSPP_PCC) {
 		DRM_DEBUG_DRIVER("Add feature to active list %d\n",
 				 prop_node->property_id);
 		sde_cp_update_list(prop_node, sde_crtc, false);
