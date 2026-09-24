@@ -9,12 +9,16 @@
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include <linux/pwm.h>
+#include <linux/sysfs.h>
 #include <video/mipi_display.h>
 
 #include "dsi_panel.h"
 #include "dsi_ctrl_hw.h"
 #include "dsi_parser.h"
 #include "dsi_mi_feature.h"
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+#include "exposure_adjustment.h"
+#endif
 
 #include "dsi_display.h"
 #include "sde_dbg.h"
@@ -924,6 +928,7 @@ int dsi_panel_set_fod_hbm(struct dsi_panel *panel, bool status)
 int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 {
 	int rc = 0;
+	u32 requested_bl_lvl = bl_lvl;
 	struct dsi_backlight_config *bl = &panel->bl_config;
 	struct dsi_backlight_config *bl_slaver = &panel->bl_slaver_config;
 	struct dsi_panel_mi_cfg *mi_cfg = &panel->mi_cfg;
@@ -933,23 +938,27 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 
 	DSI_DEBUG("backlight type:%d lvl:%d\n", bl->type, bl_lvl);
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+	bl_lvl = ea_panel_calc_backlight(panel, bl_lvl);
+#endif
+
 	/* lmi panel must restore to last_bl_level to avoid flash high
 	 * brightness white exiting app lock with DC on (MIUI-1755728),
 	 * must make sure last_bl_level is correct. */
-	if (mi_cfg->dc_type == 2 && mi_cfg->last_bl_level != bl_lvl) {
-		mi_cfg->last_bl_level = bl_lvl;
-		if (bl_lvl)
-			mi_cfg->last_nonzero_bl_level = bl_lvl;
+	if (mi_cfg->dc_type == 2 && mi_cfg->last_bl_level != requested_bl_lvl) {
+		mi_cfg->last_bl_level = requested_bl_lvl;
+		if (mi_cfg->last_bl_level)
+			mi_cfg->last_nonzero_bl_level = mi_cfg->last_bl_level;
 	}
 
-	if (dc_skip_set_backlight(panel, bl_lvl)) {
+	if (dc_skip_set_backlight(panel, requested_bl_lvl)) {
 		DSI_INFO("skip set backlight bacase dc enable %d, bl %d\n",
 			panel->mi_cfg.dc_enable, bl_lvl);
 		return rc;
 	}else if (!panel->mi_cfg.bl_enable) {
-		mi_cfg->last_bl_level = bl_lvl;
-		if (bl_lvl)
-			mi_cfg->last_nonzero_bl_level = bl_lvl;
+		mi_cfg->last_bl_level = requested_bl_lvl;
+		if (mi_cfg->last_bl_level)
+			mi_cfg->last_nonzero_bl_level = mi_cfg->last_bl_level;
 		return rc;
 	}
 
@@ -1017,9 +1026,9 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 		DSI_INFO("DC off\n");
 		mi_cfg->dc_enable = false;
 	}
-	mi_cfg->last_bl_level = bl_lvl;
-	if (bl_lvl)
-		mi_cfg->last_nonzero_bl_level = bl_lvl;
+	mi_cfg->last_bl_level = requested_bl_lvl;
+	if (mi_cfg->last_bl_level)
+		mi_cfg->last_nonzero_bl_level = mi_cfg->last_bl_level;
 	return rc;
 }
 
@@ -4095,6 +4104,36 @@ void dsi_panel_put(struct dsi_panel *panel)
 	kfree(panel);
 }
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+static ssize_t msm_fb_ea_enable_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct dsi_display *display = dev_get_drvdata(dev);
+
+	if (!display || !display->panel)
+		return -ENODEV;
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+			ea_panel_is_enabled(display->panel));
+}
+
+static ssize_t msm_fb_ea_enable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dsi_display *display = dev_get_drvdata(dev);
+	bool enabled;
+	int rc;
+
+	if (!display || !display->panel)
+		return -ENODEV;
+	if (kstrtobool(buf, &enabled))
+		return -EINVAL;
+	rc = ea_panel_mode_ctrl(display->panel, enabled);
+	return rc ? rc : count;
+}
+
+static DEVICE_ATTR_RW(msm_fb_ea_enable);
+#endif
+
 int dsi_panel_drv_init(struct dsi_panel *panel,
 		       struct mipi_dsi_host *host)
 {
@@ -4149,8 +4188,20 @@ int dsi_panel_drv_init(struct dsi_panel *panel,
 		goto error_gpio_release;
 	}
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+	if (panel->type && !strcmp(panel->type, "primary")) {
+		rc = device_create_file(panel->parent, &dev_attr_msm_fb_ea_enable);
+		if (rc)
+			goto error_bl_unregister;
+	}
+#endif
+
 	goto exit;
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+error_bl_unregister:
+	(void)dsi_panel_bl_unregister(panel);
+#endif
 error_gpio_release:
 	(void)dsi_panel_gpio_release(panel);
 error_pinctrl_deinit:
@@ -4173,6 +4224,10 @@ int dsi_panel_drv_deinit(struct dsi_panel *panel)
 
 	mutex_lock(&panel->panel_lock);
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+	if (panel->type && !strcmp(panel->type, "primary"))
+		device_remove_file(panel->parent, &dev_attr_msm_fb_ea_enable);
+#endif
 	rc = dsi_panel_bl_unregister(panel);
 	if (rc)
 		DSI_ERR("[%s] failed to unregister backlight, rc=%d\n",
