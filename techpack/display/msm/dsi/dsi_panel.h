@@ -236,6 +236,8 @@ struct dsi_panel {
 	bool sync_broadcast_en;
 
 	struct dsi_panel_mi_cfg mi_cfg;
+	bool ea_enabled;
+	u32 ea_last_level;
 
 	int panel_test_gpio;
 	int power_mode;
