@@ -26,7 +26,7 @@ And public attribution of xiaomi platforms(like J1 and so and)
 	connectors = <&sde_wb &sde_dsi &sde_dsi1 &sde_rscc>;
 };
 
-&dsi_sim_vid {
+&dsi_j11_38_08_0a_fhd_cmd {
 	qcom,panel-supply-entries = <&dsi_panel_j11_pwr_supply_vci>;
 	qcom,platform-reset-gpio = <&tlmm 46 0>;
 };
@@ -38,7 +38,7 @@ And public attribution of xiaomi platforms(like J1 and so and)
 &sde_dsi {
 	/delete-property/ vdd-supply;
 	/delete-property/ avdd-supply;
-	qcom,dsi-default-panel = <&dsi_sim_vid>;
+	qcom,dsi-default-panel = <&dsi_j11_38_08_0a_fhd_cmd>;
 };
 
 &soc {
