@@ -9,7 +9,7 @@
 #include <linux/dma-buf.h>
 #include <linux/string.h>
 #include <linux/math64.h>
-#include <linux/printk.h>
+#include <linux/bitops.h>
 #include <drm/msm_drm_pp.h>
 #include "sde_color_processing.h"
 #include "sde_kms.h"
@@ -280,6 +280,17 @@ void sde_dspp_clear_pcc(struct sde_hw_cp_cfg *hw_cfg)
 	pcc_cfg_clear.b.b = color_transform_pcc_cfg.b.b;
 }
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+static u32 ea_scale_pcc_linear(u32 value, u32 coeff)
+{
+	s64 scaled = div_s64((s64)sign_extend32(value, 17) * coeff,
+			     EA_PCC_MAX);
+
+	/* The PCC linear registers hold signed 18-bit Q15 coefficients. */
+	return (u32)scaled & GENMASK(17, 0);
+}
+#endif
+
 static int set_dspp_pcc_feature(struct sde_hw_dspp *hw_dspp,
 				struct sde_hw_cp_cfg *hw_cfg,
 				struct sde_crtc *hw_crtc)
@@ -320,25 +331,14 @@ static int set_dspp_pcc_feature(struct sde_hw_dspp *hw_dspp,
 		if (!(hw_crtc->mi_dimlayer_type & MI_DIMLAYER_FOD_HBM_OVERLAY) &&
 		    hw_cfg->payload) {
 			coeff = ea_panel_get_coefficient(&hw_crtc->base);
-			if (hw_cfg->payload != &adjusted) {
-				const struct drm_msm_pcc *raw = hw_cfg->payload;
-
-				pr_info_ratelimited("EA PCC raw coeff=%u linear=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x\n",
-					coeff, raw->r.r, raw->r.g, raw->r.b,
-					raw->g.r, raw->g.g, raw->g.b,
-					raw->b.r, raw->b.g, raw->b.b);
-			}
 			if (coeff < EA_PCC_MAX) {
 				if (hw_cfg->payload != &adjusted)
 					adjusted = *(struct drm_msm_pcc *)hw_cfg->payload;
 				adjusted.r.c = div_u64((u64)adjusted.r.c * coeff,
 							 EA_PCC_MAX);
-				adjusted.r.r = div_u64((u64)adjusted.r.r * coeff,
-							 EA_PCC_MAX);
-				adjusted.r.g = div_u64((u64)adjusted.r.g * coeff,
-							 EA_PCC_MAX);
-				adjusted.r.b = div_u64((u64)adjusted.r.b * coeff,
-							 EA_PCC_MAX);
+				adjusted.r.r = ea_scale_pcc_linear(adjusted.r.r, coeff);
+				adjusted.r.g = ea_scale_pcc_linear(adjusted.r.g, coeff);
+				adjusted.r.b = ea_scale_pcc_linear(adjusted.r.b, coeff);
 				adjusted.r.rg = div_u64((u64)adjusted.r.rg * coeff,
 							 EA_PCC_MAX);
 				adjusted.r.gb = div_u64((u64)adjusted.r.gb * coeff,
@@ -349,12 +349,9 @@ static int set_dspp_pcc_feature(struct sde_hw_dspp *hw_dspp,
 							 EA_PCC_MAX);
 				adjusted.g.c = div_u64((u64)adjusted.g.c * coeff,
 							 EA_PCC_MAX);
-				adjusted.g.r = div_u64((u64)adjusted.g.r * coeff,
-							 EA_PCC_MAX);
-				adjusted.g.g = div_u64((u64)adjusted.g.g * coeff,
-							 EA_PCC_MAX);
-				adjusted.g.b = div_u64((u64)adjusted.g.b * coeff,
-							 EA_PCC_MAX);
+				adjusted.g.r = ea_scale_pcc_linear(adjusted.g.r, coeff);
+				adjusted.g.g = ea_scale_pcc_linear(adjusted.g.g, coeff);
+				adjusted.g.b = ea_scale_pcc_linear(adjusted.g.b, coeff);
 				adjusted.g.rg = div_u64((u64)adjusted.g.rg * coeff,
 							 EA_PCC_MAX);
 				adjusted.g.gb = div_u64((u64)adjusted.g.gb * coeff,
@@ -365,12 +362,9 @@ static int set_dspp_pcc_feature(struct sde_hw_dspp *hw_dspp,
 							 EA_PCC_MAX);
 				adjusted.b.c = div_u64((u64)adjusted.b.c * coeff,
 							 EA_PCC_MAX);
-				adjusted.b.r = div_u64((u64)adjusted.b.r * coeff,
-							 EA_PCC_MAX);
-				adjusted.b.g = div_u64((u64)adjusted.b.g * coeff,
-							 EA_PCC_MAX);
-				adjusted.b.b = div_u64((u64)adjusted.b.b * coeff,
-							 EA_PCC_MAX);
+				adjusted.b.r = ea_scale_pcc_linear(adjusted.b.r, coeff);
+				adjusted.b.g = ea_scale_pcc_linear(adjusted.b.g, coeff);
+				adjusted.b.b = ea_scale_pcc_linear(adjusted.b.b, coeff);
 				adjusted.b.rg = div_u64((u64)adjusted.b.rg * coeff,
 							 EA_PCC_MAX);
 				adjusted.b.gb = div_u64((u64)adjusted.b.gb * coeff,
