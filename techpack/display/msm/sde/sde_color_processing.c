@@ -9,6 +9,7 @@
 #include <linux/dma-buf.h>
 #include <linux/string.h>
 #include <linux/math64.h>
+#include <linux/printk.h>
 #include <drm/msm_drm_pp.h>
 #include "sde_color_processing.h"
 #include "sde_kms.h"
@@ -319,6 +320,14 @@ static int set_dspp_pcc_feature(struct sde_hw_dspp *hw_dspp,
 		if (!(hw_crtc->mi_dimlayer_type & MI_DIMLAYER_FOD_HBM_OVERLAY) &&
 		    hw_cfg->payload) {
 			coeff = ea_panel_get_coefficient(&hw_crtc->base);
+			if (hw_cfg->payload != &adjusted) {
+				const struct drm_msm_pcc *raw = hw_cfg->payload;
+
+				pr_info_ratelimited("EA PCC raw coeff=%u linear=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x\n",
+					coeff, raw->r.r, raw->r.g, raw->r.b,
+					raw->g.r, raw->g.g, raw->g.b,
+					raw->b.r, raw->b.g, raw->b.b);
+			}
 			if (coeff < EA_PCC_MAX) {
 				if (hw_cfg->payload != &adjusted)
 					adjusted = *(struct drm_msm_pcc *)hw_cfg->payload;
