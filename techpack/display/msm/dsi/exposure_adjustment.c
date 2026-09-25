@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <linux/math64.h>
+#include <linux/mutex.h>
 #include <drm/drm_connector.h>
 #include <drm/drm_modeset_lock.h>
 
@@ -8,6 +9,8 @@
 #include "exposure_adjustment.h"
 #include "../sde/sde_color_processing.h"
 #include "../sde/sde_crtc.h"
+
+static DEFINE_MUTEX(ea_mode_lock);
 
 bool ea_panel_is_enabled(struct dsi_panel *panel)
 {
@@ -56,16 +59,21 @@ int ea_panel_mode_ctrl(struct dsi_panel *panel, bool enable)
 	if (!display || !display->drm_dev || !display->drm_conn ||
 	    display->panel != panel || !panel->panel_initialized)
 		return -ENODEV;
+
+	mutex_lock(&ea_mode_lock);
 	previous = READ_ONCE(panel->ea_enabled);
-	if (previous == enable)
-		return 0;
+	if (previous == enable) {
+		rc = 0;
+		goto unlock;
+	}
 
 	drm_modeset_lock_all(display->drm_dev);
 	if (!display->drm_conn->state ||
 	    !(crtc = display->drm_conn->state->crtc) ||
 	    !sde_cp_crtc_has_pcc(crtc)) {
 		drm_modeset_unlock_all(display->drm_dev);
-		return -ENODEV;
+		rc = -ENODEV;
+		goto unlock;
 	}
 
 	WRITE_ONCE(panel->ea_enabled, enable);
@@ -80,7 +88,8 @@ int ea_panel_mode_ctrl(struct dsi_panel *panel, bool enable)
 		if (display->drm_conn->state && display->drm_conn->state->crtc)
 			sde_cp_crtc_update_ea(display->drm_conn->state->crtc);
 		drm_modeset_unlock_all(display->drm_dev);
-		return rc;
 	}
-	return 0;
+unlock:
+	mutex_unlock(&ea_mode_lock);
+	return rc;
 }
