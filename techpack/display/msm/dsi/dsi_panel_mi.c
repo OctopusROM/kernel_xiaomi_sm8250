@@ -30,6 +30,9 @@
 
 #include "mi_disp_nvt_alpha_data.h"
 #include "mi_disp_lhbm.h"
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+#include "exposure_adjustment.h"
+#endif
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 
@@ -3421,6 +3424,7 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 	bool fod_lhbm_low_brightness_enabled = false;
 	bool fod_lhbm_low_brightness_allow = true;
 	u32 fp_status = 0;
+	u32 restore_bl_level;
 
 	if (!panel) {
 		pr_err("invalid params\n");
@@ -3866,12 +3870,17 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 						if (tx_buf && tx_buf[0] == 0x51) {
 							if (mi_cfg->layer_fod_unlock_success && !mi_cfg->last_bl_level) {
 								pr_err("fod hbm off, restore last bl: %d\n", mi_cfg->last_nonzero_bl_level);
-								tx_buf[1] = (mi_cfg->last_nonzero_bl_level >> 8) & 0x07;
-								tx_buf[2] = mi_cfg->last_nonzero_bl_level & 0xff;
+								restore_bl_level = mi_cfg->last_nonzero_bl_level;
 							} else {
-								tx_buf[1] = (mi_cfg->last_bl_level >> 8) & 0x07;
-								tx_buf[2] = mi_cfg->last_bl_level & 0xff;
+								restore_bl_level = mi_cfg->last_bl_level;
 							}
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+							/* FOD is still active until the off command completes. */
+							restore_bl_level = ea_panel_calc_backlight_for_fod_exit(
+								panel, restore_bl_level);
+#endif
+							tx_buf[1] = (restore_bl_level >> 8) & 0x07;
+							tx_buf[2] = restore_bl_level & 0xff;
 							pr_info("DSI_CMD_SET_MI_HBM_FOD_OFF 0x%02X = 0x%02X 0x%02X\n",
 									tx_buf[0], tx_buf[1], tx_buf[2]);
 						} else {
@@ -4155,4 +4164,3 @@ exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
 }
-

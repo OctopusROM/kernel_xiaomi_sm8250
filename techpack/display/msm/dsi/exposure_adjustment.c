@@ -39,14 +39,26 @@ u32 ea_panel_get_coefficient(struct drm_crtc *crtc)
 				   EA_ELVSS_OFF_THRESHOLD);
 }
 
-u32 ea_panel_calc_backlight(struct dsi_panel *panel, u32 level)
+static u32 ea_panel_adjust_backlight(struct dsi_panel *panel, u32 level,
+				     bool fod_exit)
 {
 	WRITE_ONCE(panel->ea_last_level, level);
 	if (READ_ONCE(panel->ea_enabled) && level &&
 	    level < EA_ELVSS_OFF_THRESHOLD && !panel->mi_cfg.dc_enable &&
-	    !panel->mi_cfg.fod_hbm_enabled && !panel->mi_cfg.hbm_enabled)
+	    (fod_exit || !panel->mi_cfg.fod_hbm_enabled) &&
+	    !panel->mi_cfg.hbm_enabled)
 		return EA_ELVSS_OFF_THRESHOLD;
 	return level;
+}
+
+u32 ea_panel_calc_backlight(struct dsi_panel *panel, u32 level)
+{
+	return ea_panel_adjust_backlight(panel, level, false);
+}
+
+u32 ea_panel_calc_backlight_for_fod_exit(struct dsi_panel *panel, u32 level)
+{
+	return ea_panel_adjust_backlight(panel, level, true);
 }
 
 int ea_panel_mode_ctrl(struct dsi_panel *panel, bool enable)
