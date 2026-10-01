@@ -1720,7 +1720,8 @@ static void handle_vdm_resp_ack(struct usbpd *pd, u32 *vdos, u8 num_vdos,
 			if (svid) {
 				usbpd_dbg(&pd->dev, "Discovered SVID: 0x%04x\n",
 						svid);
-				pd->adapter_svid = svid;
+				if (pd->adapter_svid != USB_PD_MI_SVID)
+					pd->adapter_svid = svid;
 				*psvid++ = svid;
 			}
 		}
@@ -5011,28 +5012,6 @@ static ssize_t adapter_version_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(adapter_version);
 
-static int StringToHex(char *str, unsigned char *out, unsigned int *outlen)
-{
-	char *p = str;
-	char high = 0, low = 0;
-	int tmplen = strlen(p), cnt = 0;
-	tmplen = strlen(p);
-	while (cnt < (tmplen / 2)) {
-		high = ((*p > '9') && ((*p <= 'F') || (*p <= 'f'))) ? *p - 48 - 7 : *p - 48;
-		low = (*(++p) > '9' && ((*p <= 'F') || (*p <= 'f'))) ? *(p) - 48 - 7 : *(p) - 48;
-		out[cnt] = ((high & 0x0f) << 4 | (low & 0x0f));
-		p++;
-		cnt++;
-	}
-	if (tmplen % 2 != 0)
-		out[cnt] = ((*p > '9') && ((*p <= 'F') || (*p <= 'f'))) ? *p - 48 - 7 : *p - 48;
-
-	if (outlen != NULL)
-		*outlen = tmplen / 2 + tmplen % 2;
-
-	return tmplen / 2 + tmplen % 2;
-}
-
 #define BSWAP_32(x) \
 	(u32)((((u32)(x) & 0xff000000) >> 24) | \
 			(((u32)(x) & 0x00ff0000) >> 8) | \
@@ -5086,7 +5065,7 @@ static int usbpd_request_vdm_cmd(struct usbpd *pd, enum uvdm_state cmd, unsigned
 		break;
 	default:
 		usbpd_err(&pd->dev, "cmd:%d is not support\n", cmd);
-		break;
+		return -EINVAL;
 	}
 
 	return rc;
@@ -5097,16 +5076,47 @@ static ssize_t request_vdm_cmd_store(struct device *dev,
 {
 	struct usbpd *pd = dev_get_drvdata(dev);
 	int cmd, ret;
-	unsigned char buffer[64];
-	unsigned char data[32];
-	int count;
+	char buffer[USBPD_UVDM_SS_LEN * sizeof(u32) * 2 + 1], extra;
+	u32 data[USBPD_UVDM_SS_LEN] = {0};
+	size_t data_len;
 
-	ret = sscanf(buf, "%d,%s\n", &cmd, buffer);
+	if (!size || size > sizeof(buffer) + 3)
+		return -EINVAL;
 
-	usbpd_dbg(&pd->dev, "%s:cmd:%d, buffer:%s\n", __func__, cmd, buffer);
+	ret = sscanf(buf, "%d,%32s %c", &cmd, buffer, &extra);
+	if (ret != 2)
+		return -EINVAL;
 
-	StringToHex(buffer, data, &count);
-	usbpd_request_vdm_cmd(pd, cmd, (unsigned int *)data);
+	switch (cmd) {
+	case USBPD_UVDM_CHARGER_VERSION:
+	case USBPD_UVDM_CHARGER_TEMP:
+	case USBPD_UVDM_CHARGER_VOLTAGE:
+		data_len = 0;
+		break;
+	case USBPD_UVDM_VERIFIED:
+	case USBPD_UVDM_REMOVE_COMPENSATION:
+		data_len = USBPD_UVDM_VERIFIED_LEN * sizeof(u32);
+		break;
+	case USBPD_UVDM_SESSION_SEED:
+	case USBPD_UVDM_AUTHENTICATION:
+	case USBPD_UVDM_REVERSE_AUTHEN:
+		data_len = sizeof(data);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (data_len) {
+		if (strlen(buffer) != data_len * 2)
+			return -EINVAL;
+		ret = hex2bin((u8 *)data, buffer, data_len);
+		if (ret)
+			return ret;
+	}
+
+	ret = usbpd_request_vdm_cmd(pd, cmd, data);
+	if (ret < 0)
+		return ret;
 
 	return size;
 }
@@ -5266,6 +5276,7 @@ static void usbpd_mi_connect_cb(struct usbpd_svid_handler *hdlr,bool supports_us
 
 	pd->uvdm_state = USBPD_UVDM_CONNECT;
 	usbpd_info(&pd->dev, "hdlr->svid:%x has connect\n", hdlr->svid);
+	power_supply_changed(pd->usb_psy);
 	return;
 }
 
@@ -5299,7 +5310,30 @@ static void usbpd_mi_vdm_received_cb(struct usbpd_svid_handler *hdlr, u32 vdm_hd
 	cmd = UVDM_HDR_CMD(vdm_hdr);
 
 	usbpd_dbg(&pd->dev, "hdlr->svid:0x%x, vdm_hdr:0x%x, num_vdos:%d, cmd:%d\n",
-			hdlr->svid, vdm_hdr, num_vdos);
+			hdlr->svid, vdm_hdr, num_vdos, cmd);
+
+	/* Do not expose an incomplete authentication reply to batterysecret. */
+	switch (cmd) {
+	case USBPD_UVDM_SESSION_SEED:
+	case USBPD_UVDM_AUTHENTICATION:
+		if (num_vdos != USBPD_UVDM_SS_LEN)
+			return;
+		break;
+	case USBPD_UVDM_CHARGER_VERSION:
+	case USBPD_UVDM_CHARGER_TEMP:
+	case USBPD_UVDM_CHARGER_VOLTAGE:
+	case USBPD_UVDM_REVERSE_AUTHEN:
+		if (num_vdos != USBPD_UVDM_VERIFIED_LEN)
+			return;
+		break;
+	case USBPD_UVDM_VERIFIED:
+	case USBPD_UVDM_REMOVE_COMPENSATION:
+		if (num_vdos < 0 || num_vdos > USBPD_UVDM_VERIFIED_LEN)
+			return;
+		break;
+	default:
+		return;
+	}
 
 	switch (cmd) {
 	case USBPD_UVDM_CHARGER_VERSION:
@@ -5331,6 +5365,9 @@ static void usbpd_mi_vdm_received_cb(struct usbpd_svid_handler *hdlr, u32 vdm_hd
 		}
 		usb_current = val.intval / 1000;
 		usbpd_dbg(&pd->dev, "usb current now:%d\n", usb_current);
+
+		if (usb_current <= 0)
+			break;
 
 		r_cable = (pd->vdm_data.ta_voltage - usb_voltage) / usb_current;
 		usbpd_dbg(&pd->dev, "usb r_cable now:%dmohm\n", r_cable);
