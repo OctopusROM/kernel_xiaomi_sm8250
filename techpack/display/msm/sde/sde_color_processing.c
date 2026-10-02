@@ -2372,12 +2372,14 @@ void sde_cp_crtc_suspend(struct drm_crtc *crtc)
 	mutex_lock(&sde_crtc->crtc_cp_lock);
 	list_for_each_entry_safe(prop_node, n, &sde_crtc->active_list,
 				 active_list) {
+		list_del_init(&prop_node->dirty_list);
 		sde_cp_update_list(prop_node, sde_crtc, true);
 		list_del_init(&prop_node->active_list);
 	}
 
 	list_for_each_entry_safe(prop_node, n, &sde_crtc->ad_active,
 				 active_list) {
+		list_del_init(&prop_node->dirty_list);
 		sde_cp_update_list(prop_node, sde_crtc, true);
 		list_del_init(&prop_node->active_list);
 		ad_suspend = true;
