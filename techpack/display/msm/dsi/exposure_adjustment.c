@@ -27,6 +27,10 @@ u32 ea_panel_get_coefficient(struct drm_crtc *crtc)
 	    !display->drm_conn->state || display->drm_conn->state->crtc != crtc)
 		return EA_PCC_MAX;
 
+	/* PCC is applied before pre-kickoff enables FOD HBM on the panel. */
+	if (to_sde_crtc_state(crtc->state)->fod_dim_layer)
+		return EA_PCC_MAX;
+
 	panel = display->panel;
 	level = READ_ONCE(panel->ea_last_level);
 	if (!READ_ONCE(panel->ea_enabled) || !level ||
