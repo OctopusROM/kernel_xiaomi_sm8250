@@ -1684,6 +1684,43 @@ void sde_cp_crtc_update_ea(struct drm_crtc *crtc)
 	mutex_unlock(&sde_crtc->crtc_cp_lock);
 }
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+void sde_cp_crtc_apply_ea(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct sde_cp_node *node;
+	struct sde_hw_ctl *ctl;
+	u32 coeff, i;
+
+	if (!sde_crtc->enabled || !sde_crtc->num_mixers ||
+	    !sde_kms_is_cp_operation_allowed(get_kms(crtc)))
+		return;
+
+	mutex_lock(&sde_crtc->crtc_cp_lock);
+	coeff = ea_panel_get_coefficient(crtc);
+	if (sde_crtc->ea_pcc_coeff == coeff)
+		goto exit;
+
+	list_for_each_entry(node, &sde_crtc->feature_list, feature_list) {
+		if (node->feature != SDE_CP_CRTC_DSPP_PCC)
+			continue;
+
+		sde_cp_crtc_setfeature(node, sde_crtc);
+		for (i = 0; i < sde_crtc->num_mixers; i++) {
+			ctl = sde_crtc->mixers[i].hw_ctl;
+			if (ctl && ctl->ops.update_bitmask_dspp &&
+			    sde_crtc->mixers[i].hw_dspp)
+				ctl->ops.update_bitmask_dspp(ctl,
+					sde_crtc->mixers[i].hw_dspp->idx, 1);
+		}
+		sde_crtc->ea_pcc_coeff = coeff;
+		break;
+	}
+exit:
+	mutex_unlock(&sde_crtc->crtc_cp_lock);
+}
+#endif
+
 static int sde_cp_crtc_check_pu_features(struct drm_crtc *crtc)
 {
 	int ret = 0, i = 0, j = 0;

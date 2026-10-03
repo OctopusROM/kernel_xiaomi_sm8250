@@ -17,6 +17,7 @@
 #include "dsi_defs.h"
 #include "dsi_display.h"
 #include "sde_crtc.h"
+#include "sde_color_processing.h"
 #include "sde_rm.h"
 #include "sde_trace.h"
 #include "dsi_mi_feature.h"
@@ -810,6 +811,12 @@ void sde_connector_update_fod_hbm(struct drm_connector *connector)
 		sde_encoder_wait_for_event(c_conn->encoder, MSM_ENC_VBLANK);
 
 	dsi_panel_set_fod_hbm(display->panel, status);
+
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+	/* Restore EA PCC before the FOD-off frame is flushed. */
+	if (!status)
+		sde_cp_crtc_apply_ea(c_conn->encoder->crtc);
+#endif
 
 	if ((status && mi_cfg && mi_cfg->delay_after_fod_hbm_on) ||
 			(!status && mi_cfg && mi_cfg->delay_after_fod_hbm_off))
