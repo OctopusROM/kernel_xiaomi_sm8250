@@ -256,8 +256,14 @@ static int cam_ois_slaveInfo_pkt_parser(struct cam_ois_ctrl_t *o_ctrl,
 {
 	int32_t rc = 0;
 	struct cam_cmd_ois_info *ois_info;
+	/* CamX reports packed command lengths in 32-bit words. */
+	size_t extended_len =
+		(sizeof(*ois_info) / sizeof(uint32_t)) * sizeof(uint32_t);
+	size_t legacy_len = extended_len - sizeof(uint32_t);
+	size_t opcode_offset = offsetof(struct cam_cmd_ois_info, opcode);
+	size_t opcode_len;
 
-	if (!o_ctrl || !cmd_buf || len < sizeof(struct cam_cmd_ois_info)) {
+	if (!o_ctrl || !cmd_buf || len < legacy_len) {
 		CAM_ERR(CAM_OIS, "Invalid Args");
 		return -EINVAL;
 	}
@@ -275,8 +281,35 @@ static int cam_ois_slaveInfo_pkt_parser(struct cam_ois_ctrl_t *o_ctrl,
 		o_ctrl->ois_name[OIS_NAME_LEN - 1] = '\0';
 		o_ctrl->io_master_info.cci_client->retries = 3;
 		o_ctrl->io_master_info.cci_client->id_map = 0;
-		memcpy(&(o_ctrl->opcode), &(ois_info->opcode),
-			sizeof(struct cam_ois_opcode));
+		opcode_len = len - opcode_offset;
+		if (opcode_len > sizeof(o_ctrl->opcode))
+			opcode_len = sizeof(o_ctrl->opcode);
+
+		memset(&o_ctrl->opcode, 0, sizeof(o_ctrl->opcode));
+		if (len >= extended_len) {
+			memcpy(&o_ctrl->opcode, &ois_info->opcode, opcode_len);
+		} else {
+			const u8 *opcode = (const u8 *)&ois_info->opcode;
+			size_t offset =
+				offsetof(struct cam_ois_opcode, ois_get_data);
+			size_t legacy_opcode_len = opcode_len;
+
+			/* Legacy packets omit the OIS data word. */
+			if (legacy_opcode_len > sizeof(o_ctrl->opcode) -
+			    sizeof(o_ctrl->opcode.ois_get_data))
+				legacy_opcode_len = sizeof(o_ctrl->opcode) -
+					sizeof(o_ctrl->opcode.ois_get_data);
+			if (legacy_opcode_len > offset) {
+				memcpy(&o_ctrl->opcode, opcode, offset);
+				legacy_opcode_len -= offset;
+				if (legacy_opcode_len > sizeof(o_ctrl->opcode) -
+				    offsetof(struct cam_ois_opcode, fw_addr_type))
+					legacy_opcode_len = sizeof(o_ctrl->opcode) -
+						offsetof(struct cam_ois_opcode, fw_addr_type);
+				memcpy(&o_ctrl->opcode.fw_addr_type, opcode + offset,
+				       legacy_opcode_len);
+			}
+		}
 		CAM_DBG(CAM_OIS, "Slave addr: 0x%x Freq Mode: %d",
 			ois_info->slave_addr, ois_info->i2c_freq_mode);
 	} else if (o_ctrl->io_master_info.master_type == I2C_MASTER) {
@@ -1079,8 +1112,14 @@ static int cam_ois_pkt_parse(struct cam_ois_ctrl_t *o_ctrl, void *arg)
 
 			switch (cmm_hdr->cmd_type) {
 			case CAMERA_SENSOR_CMD_TYPE_I2C_INFO:
+				if (total_cmd_buf_in_bytes > remain_len) {
+					CAM_ERR(CAM_OIS,
+						"Invalid slave info length");
+					return -EINVAL;
+				}
 				rc = cam_ois_slaveInfo_pkt_parser(
-					o_ctrl, cmd_buf, remain_len);
+					o_ctrl, cmd_buf,
+					total_cmd_buf_in_bytes);
 				if (rc < 0) {
 					CAM_ERR(CAM_OIS,
 					"Failed in parsing slave info");
