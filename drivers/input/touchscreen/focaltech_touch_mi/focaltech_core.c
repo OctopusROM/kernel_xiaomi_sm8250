@@ -1576,9 +1576,18 @@ static int fts_set_cur_value(int mode, int value)
 {
 	FTS_INFO("%s, mode:%d, value:%d\n", __func__, mode, value);
 	if (mode == Touch_Fod_Enable && fts_data && value >= 0) {
+		mutex_lock(&fts_data->fod_mutex);
 		xiaomi_touch_interfaces.touch_mode[mode][SET_CUR_VALUE] = value;
 		xiaomi_touch_interfaces.touch_mode[mode][GET_CUR_VALUE] = value;
 		fts_data->fod_status = value;
+#ifndef CONFIG_FACTORY_BUILD
+		/* Authentication can start after the panel has suspended. */
+		if (fts_data->suspended && value != 100) {
+			fts_fod_recovery(fts_data->client);
+			fts_irq_enable();
+		}
+#endif
+		mutex_unlock(&fts_data->fod_mutex);
 		return 0;
 	}
 	if (mode == Touch_Aod_Enable && fts_data && value >= 0) {
